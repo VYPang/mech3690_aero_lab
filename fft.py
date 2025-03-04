@@ -1,24 +1,16 @@
 import numpy as np
 import pandas as pd
 import csv
+from omegaconf import OmegaConf
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 
-def data_preprocessing(data): # data: 2D numpy array
+def data_preprocessing(data, conf): # data: 2D numpy array
     # time start from 0
     data[:,0] = data[:,0] - data[0,0]
-
-    # max, min, mean, std, confidence interval 99%
-    max_x = np.max(data[:,1])
-    min_x = np.min(data[:,1])
-    mean_x = np.mean(data[:,1])
-    std_x = np.std(data[:,1])
-    conf_int = 2.576 * std_x / np.sqrt(len(data))
-    print("Max:", max_x)
-    print("Min:", min_x)
-    print("Mean:", mean_x)
-    print("Std:", std_x)
-    print("Confidence interval 99%:", conf_int)
+    # zero drift
+    mean = conf.cal_mean
+    data[:,1] = data[:,1] - mean
     return data
 
 def plot_signal(t, x, save_prefix):
@@ -28,7 +20,7 @@ def plot_signal(t, x, save_prefix):
     plt.xlabel('Time (s)')
     plt.ylabel('Voltage (V)')
     plt.grid()
-    plt.savefig(f'{save_prefix}_signal.png')
+    plt.savefig(f'{save_prefix}_signal.png', dpi=300)
     plt.clf()
 
 def fft_plot_psd(t, x, save_prefix, threshold=None):
@@ -69,7 +61,7 @@ def fft_plot_psd(t, x, save_prefix, threshold=None):
     plt.grid()
     plt.xlabel('Frequency (Hz)')
     plt.ylabel('Amplitude')
-    plt.savefig(f'{save_prefix}_fft.png')
+    plt.savefig(f'{save_prefix}_fft.png', dpi=300)
     plt.clf()
 
     # Write frequency domain information to output file
@@ -80,17 +72,20 @@ def fft_plot_psd(t, x, save_prefix, threshold=None):
 if __name__ == '__main__':
     # Read data from CSV file
     file_path = 'data/lab1.xlsx'
+    conf_path = 'config/config.yaml'
     save_prefix = 'ac_noise'
-    num_dataPoints = 2048
-    threshold = 0.00005
+    num_dataPoints = 2500
+    threshold = 0.00004
+    # threshold = None
     sheet_name = 1
 
+    conf = OmegaConf.load(conf_path)
     df_calibration = pd.read_excel(file_path, header=None, sheet_name=sheet_name)
 
     data = df_calibration[[3,4]]
     N1 = len(data)
     data = data.to_numpy()
-    data = data_preprocessing(data)
+    data = data_preprocessing(data, conf)
 
     if N1 > num_dataPoints:
         N = num_dataPoints
