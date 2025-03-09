@@ -4,8 +4,14 @@ import csv
 from omegaconf import OmegaConf
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
+import plotly.express as px
+from scipy.signal import find_peaks
 
-def data_preprocessing(data, conf): # data: 2D numpy array
+def plotly_scatter(t, x):
+    fig = px.scatter(x=t, y=x)
+    fig.show()
+
+def data_preprocessing(data, conf, p=True): # data: 2D numpy array
     # time start from 0
     data[:,0] = data[:,0] - data[0,0]
     # zero drift
@@ -15,10 +21,11 @@ def data_preprocessing(data, conf): # data: 2D numpy array
     mean = np.mean(data[:,1])
     std = np.std(data[:,1])
     conf_int = 2.576 * std / np.sqrt(len(data))
-    print(f"Mean: {mean} ± {conf_int} (cl99%); std: {std}")
+    if p:
+        print(f"Before normalization, Mean: {mean} ± {conf_int} (cl99%); std: {std}")
     return data
 
-def fft(t, x, save_prefix='fft'):
+def fft(t, x, save_prefix='fft', plot=True):
     N = len(t)
     delta_t = (t[-1] - t[0]) / (N - 1)
     # Compute Fourier transform and extract frequency domain information
@@ -36,14 +43,15 @@ def fft(t, x, save_prefix='fft'):
     max_f = f[max_idx]
     max_Z = Z[max_idx]
 
-    plt.plot(f, Z, marker='x', markersize=1, linestyle='-', color='black', linewidth=0.7)
-    plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
-    plt.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
-    plt.grid()
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Amplitude')
-    plt.savefig(f'{save_prefix}_fft.png', dpi=300, bbox_inches='tight', pad_inches=0)
-    plt.clf()
+    if plot:
+        plt.plot(f, Z, marker='x', markersize=1, linestyle='-', color='black', linewidth=0.7)
+        plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+        plt.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+        plt.grid()
+        plt.xlabel('Frequency (Hz)')
+        plt.ylabel('Amplitude')
+        plt.savefig(f'{save_prefix}_fft.png', dpi=300, bbox_inches='tight', pad_inches=0)
+        plt.clf()
     return max_f, max_Z # frequency, amplitude
 
 def damped_period_estimation(t, x, prefix):
@@ -58,14 +66,34 @@ def plot_signal(t, x, prefix='signal'):
     plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
     plt.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
     plt.xlabel('Time (s)')
-    plt.ylabel('Voltage (V)')
+    plt.ylabel(r'Normalized Amplitude $x/x_0$')
     plt.grid()
     plt.savefig(f'{prefix}_signal.png', dpi=300, bbox_inches='tight', pad_inches=0)
     plt.clf()
 
+def plot_max_amplitude(max_record):
+    max_record = np.array(max_record)
+    # sort by frequency
+    max_record = max_record[max_record[:,0].argsort()]
+    plt.plot(max_record[:,0], max_record[:,1], marker='x', markersize=5, linestyle='-', color='black', linewidth=0.7)
+    plt.ticklabel_format(style='sci', axis='x')
+    plt.ticklabel_format(style='sci', axis='y')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Amplitude')
+    plt.grid()
+    plt.savefig('max_amplitude.png', dpi=300, bbox_inches='tight', pad_inches=0)
+    plt.clf()
+
+    max_idx = np.argmax(max_record[:,1])
+    max_freq = max_record[max_idx, 0]
+    max_amp = max_record[max_idx, 1]
+    print(f'Maximum amplitude: {max_amp} at {max_freq} Hz')
+
 if __name__ == '__main__':
-    block_d_mass = 0.5 # kg
-    block_a_mass = 0.5 # kg
+    block_d_vol = 25.65 * 25.65 * 45.15 # mm^3
+    block_a_vol = 10.00 * 23.40 * 45.00 # mm^3
+    block_d_mass = 2700 * (block_d_vol / 0.001**3) # kg
+    block_a_mass = 2700 * (block_a_vol / 0.001**3) # kg
 
     # Read data from CSV file
     coarse_path = 'lab2_data/Lab 2 LA2T1 5-25 Forced.xlsx'
@@ -83,13 +111,14 @@ if __name__ == '__main__':
     d_free = free_all['D Free'][[3,4]]
     d_free = d_free.to_numpy()
     d_free = data_preprocessing(d_free, conf.ch_2)
+    # plotly_scatter(d_free[:,0], d_free[:,1]) # for better visualization to compute zeta manually
+    max_idx = np.argsort(d_free[:,1])[-9] # find second maximum value corresponding index (寫死)
+    d_free = d_free[max_idx:]
     d_free_t = d_free[:,0]
     d_free_x = d_free[:,1]
+    d_free_x = d_free_x / np.max(d_free_x) # normalization
     plot_signal(d_free_t, d_free_x, 'D_free')
-    start_time_cut = 0.25 # 寫死 : according to signal plot
-    d_free = d_free[d_free[:,0] > start_time_cut]
-    d_free_t = d_free[:,0]
-    d_free_x = d_free[:,1]
+    # plotly_scatter(d_free[:,0], d_free[:,1]) # for better visualization to compute zeta manually
     damped_period_estimation(d_free_t, d_free_x, 'D_free')
     print(f'Mass m: {block_d_mass} kg')
     
@@ -100,12 +129,55 @@ if __name__ == '__main__':
     a_free = free_all['A Free'][[3,4]]
     a_free = a_free.to_numpy()
     a_free = data_preprocessing(a_free, conf.ch_2)
+    # plotly_scatter(a_free[:,0], a_free[:,1]) # for better visualization to compute zeta manually
+    max_idx = np.argsort(a_free[:,1])[-5] # find second maximum value corresponding index (寫死)
+    a_free = a_free[max_idx:]
     a_free_t = a_free[:,0]
     a_free_x = a_free[:,1]
+    a_free_x = a_free_x / np.max(a_free_x) # normalization
     plot_signal(a_free_t, a_free_x, 'A_free')
-    start_time_cut = 0.26 # 寫死 : according to signal plot
-    a_free = a_free[a_free[:,0] > start_time_cut]
-    a_free_t = a_free[:,0]
-    a_free_x = a_free[:,1]
+    # plotly_scatter(a_free[:,0], a_free[:,1]) # for better visualization to compute zeta manually
     damped_period_estimation(a_free_t, a_free_x, 'A_free')
     print(f'Mass m: {block_a_mass} kg')
+
+    print('\n')
+
+    # forced vibration: Block D
+    print('Block D forced vibration analysis')
+    max_record = []
+    for name, df in coarse_all.items():
+        if name == 'calibration':
+            continue
+        freq = float(name[:-9])
+        ch_2 = df[[9, 10]]
+        ch_2 = ch_2.to_numpy()
+        ch_2 = data_preprocessing(ch_2, conf.ch_2, p=False)
+        ch_2_t = ch_2[:,0]
+        ch_2_x = ch_2[:,1] / 10 # /10 because of experiment setup mistake
+        ch_2_x = np.abs(ch_2_x)
+        max = np.max(ch_2_x)
+        max_record.append([freq, max])
+        # if '5Hz' in name or '6Hz' in name or '7Hz' in name or '8Hz' in name or '9Hz' in name or '10Hz' in name:
+        #     ch_2_x = np.abs(ch_2_x)
+        #     max = np.max(ch_2_x)
+        #     max_record.append([freq, max])
+        # else:
+        #     max_f, max_Z = fft(ch_2_t, ch_2_x, plot=False)
+        #     distance = 1/max_f
+        #     peaks, _ = find_peaks(ch_2_x, distance=distance)
+        #     values = ch_2_x[peaks]
+        #     t = ch_2_t[peaks]
+        #     plotly_scatter(t, values)
+    for name, df in fine_all.items():
+        if name == 'calibration':
+            continue
+        freq = float(name)
+        ch_2 = df[[9, 10]]
+        ch_2 = ch_2.to_numpy()
+        ch_2 = data_preprocessing(ch_2, conf.ch_2, p=False)
+        ch_2_t = ch_2[:,0]
+        ch_2_x = ch_2[:,1]
+        ch_2_x = np.abs(ch_2_x)
+        max = np.max(ch_2_x)
+        max_record.append([freq, max])
+    plot_max_amplitude(max_record)
