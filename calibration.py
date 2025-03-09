@@ -18,12 +18,15 @@ def calibration(data):
 
 if __name__ == '__main__':
     # Read data from CSV file
-    file_path = 'data/lab1.xlsx'
+    file_path = 'lab2_data/Lab 2 LA2T1 5-25 Forced.xlsx'
     sheet_name = 0
 
     df_calibration = pd.read_excel(file_path, header=None, sheet_name=sheet_name)
 
     data = df_calibration[[3,4]]
-    N1 = len(data)
+    data = data.to_numpy()
+    data = calibration(data)
+
+    data = df_calibration[[9,10]]
     data = data.to_numpy()
     data = calibration(data)

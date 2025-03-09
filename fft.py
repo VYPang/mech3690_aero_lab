@@ -11,6 +11,13 @@ def data_preprocessing(data, conf): # data: 2D numpy array
     # zero drift
     mean = conf.cal_mean
     data[:,1] = data[:,1] - mean
+    # mean, std, confidence interval 99%
+    mean = np.mean(data[:,1])
+    std = np.std(data[:,1])
+    conf_int = 2.576 * std / np.sqrt(len(data))
+    print("Mean:", mean)
+    print("Standard deviation:", std)
+    print("Confidence interval 99%:", conf_int)
     return data
 
 def plot_signal(t, x, save_prefix):
@@ -20,7 +27,7 @@ def plot_signal(t, x, save_prefix):
     plt.xlabel('Time (s)')
     plt.ylabel('Voltage (V)')
     plt.grid()
-    plt.savefig(f'{save_prefix}_signal.png', dpi=300)
+    plt.savefig(f'{save_prefix}_signal.png', dpi=300, bbox_inches='tight', pad_inches=0)
     plt.clf()
 
 def fft_plot_psd(t, x, save_prefix, threshold=None):
@@ -61,7 +68,7 @@ def fft_plot_psd(t, x, save_prefix, threshold=None):
     plt.grid()
     plt.xlabel('Frequency (Hz)')
     plt.ylabel('Amplitude')
-    plt.savefig(f'{save_prefix}_fft.png', dpi=300)
+    plt.savefig(f'{save_prefix}_fft.png', dpi=300, bbox_inches='tight', pad_inches=0)
     plt.clf()
 
     # Write frequency domain information to output file
@@ -76,7 +83,7 @@ if __name__ == '__main__':
     save_prefix = 'ac_noise'
     num_dataPoints = 2500
     threshold = 0.00004
-    # threshold = None
+    threshold = None
     sheet_name = 1
 
     conf = OmegaConf.load(conf_path)
@@ -93,9 +100,9 @@ if __name__ == '__main__':
         N = N1
 
     # Extract time and signal values
-    t = data[:N, 0] 
+    t = data[:N, 0]
     x = data[:N, 1]
 
     # Plot signal
     plot_signal(t, x, save_prefix)
-    fft_plot_psd(t, x, save_prefix, threshold)
+    # fft_plot_psd(t, x, save_prefix, threshold)
