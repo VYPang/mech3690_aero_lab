@@ -60,6 +60,7 @@ def damped_period_estimation(t, x, prefix):
     print("Damped period T_d:", damped_period)
     actual_freq = 2 * np.pi / damped_period
     print("Actual frequency \omega_d:", actual_freq)
+    return actual_freq
 
 def plot_signal(t, x, prefix='signal'):
     plt.plot(t, x, marker='x', markersize=1, linestyle='-', color='black', linewidth=0.7)
@@ -72,22 +73,19 @@ def plot_signal(t, x, prefix='signal'):
     plt.clf()
 
 def plot_max_amplitude(max_record):
-    max_record = np.array(max_record)
-    # sort by frequency
-    max_record = max_record[max_record[:,0].argsort()]
     plt.plot(max_record[:,0], max_record[:,1], marker='x', markersize=5, linestyle='-', color='black', linewidth=0.7)
     plt.ticklabel_format(style='sci', axis='x')
     plt.ticklabel_format(style='sci', axis='y')
-    plt.xlabel('Frequency (Hz)')
+    plt.xlabel(r'Normalized Frequency $\omega/\omega_n$')
     plt.ylabel('Amplitude')
     plt.grid()
-    plt.savefig('max_amplitude.png', dpi=300, bbox_inches='tight', pad_inches=0)
+    plt.savefig('max_amplitude_plot.png', dpi=300, bbox_inches='tight', pad_inches=0)
     plt.clf()
 
     max_idx = np.argmax(max_record[:,1])
     max_freq = max_record[max_idx, 0]
     max_amp = max_record[max_idx, 1]
-    print(f'Maximum amplitude: {max_amp} at {max_freq} Hz')
+    return max_freq, max_amp
 
 if __name__ == '__main__':
     block_d_vol = 25.65 * 25.65 * 45.15 # mm^3
@@ -119,7 +117,7 @@ if __name__ == '__main__':
     d_free_x = d_free_x / np.max(d_free_x) # normalization
     plot_signal(d_free_t, d_free_x, 'D_free')
     # plotly_scatter(d_free[:,0], d_free[:,1]) # for better visualization to compute zeta manually
-    damped_period_estimation(d_free_t, d_free_x, 'D_free')
+    d_actual_freq = damped_period_estimation(d_free_t, d_free_x, 'D_free')
     print(f'Mass m: {block_d_mass} kg')
     
     print('\n')
@@ -137,10 +135,13 @@ if __name__ == '__main__':
     a_free_x = a_free_x / np.max(a_free_x) # normalization
     plot_signal(a_free_t, a_free_x, 'A_free')
     # plotly_scatter(a_free[:,0], a_free[:,1]) # for better visualization to compute zeta manually
-    damped_period_estimation(a_free_t, a_free_x, 'A_free')
+    a_actual_freq = damped_period_estimation(a_free_t, a_free_x, 'A_free')
     print(f'Mass m: {block_a_mass} kg')
 
     print('\n')
+
+    d_damping_ratio = 0.00989767
+    d_natural_freq = d_actual_freq / np.sqrt(1 - d_damping_ratio**2)
 
     # forced vibration: Block D
     print('Block D forced vibration analysis')
@@ -157,17 +158,6 @@ if __name__ == '__main__':
         ch_2_x = np.abs(ch_2_x)
         max = np.max(ch_2_x)
         max_record.append([freq, max])
-        # if '5Hz' in name or '6Hz' in name or '7Hz' in name or '8Hz' in name or '9Hz' in name or '10Hz' in name:
-        #     ch_2_x = np.abs(ch_2_x)
-        #     max = np.max(ch_2_x)
-        #     max_record.append([freq, max])
-        # else:
-        #     max_f, max_Z = fft(ch_2_t, ch_2_x, plot=False)
-        #     distance = 1/max_f
-        #     peaks, _ = find_peaks(ch_2_x, distance=distance)
-        #     values = ch_2_x[peaks]
-        #     t = ch_2_t[peaks]
-        #     plotly_scatter(t, values)
     for name, df in fine_all.items():
         if name == 'calibration':
             continue
@@ -180,4 +170,57 @@ if __name__ == '__main__':
         ch_2_x = np.abs(ch_2_x)
         max = np.max(ch_2_x)
         max_record.append([freq, max])
-    plot_max_amplitude(max_record)
+    max_record = np.array(max_record)
+    max_record = max_record[max_record[:,0].argsort()]
+    # look for resonnant frequency
+    max_idx = np.argmax(max_record[:,1])
+    max_freq = max_record[max_idx, 0]
+    max_amp = max_record[max_idx, 1]
+    print(f'Maximum amplitude: {max_amp} at {max_freq} Hz')
+    # normalization with natrual frequency
+    max_record[:, 0] = max_record[:, 0] / d_natural_freq
+    max_freq, max_amp = plot_max_amplitude(max_record)
+    amp_thresold = 0.707 * max_amp
+    # find intersection point
+    # split with max_freq
+    max_idx = np.argmax(max_record[:,1])
+    left_curve = max_record[:max_idx]
+    right_curve = max_record[max_idx:]
+    # look for 1 point just lower than threshold & 1 point just higher than threshold
+    for i in range(len(left_curve)):
+        amplitude = left_curve[i][1]
+        if amplitude > amp_thresold:
+            right_amp = amplitude
+            right_freq = left_curve[i][0]
+            left_amp = left_curve[i-1][1]
+            left_freq = left_curve[i-1][0]
+            break
+    # interpolation
+    slope = (right_amp - left_amp) / (right_freq - left_freq)
+    left_freq_intersection = left_freq + (amp_thresold - left_amp) / slope
+    # look for 1 point just higher than threshold & 1 point just lower than threshold
+    for i in range(len(right_curve)):
+        amplitude = right_curve[i][1]
+        if amplitude < amp_thresold:
+            right_amp = amplitude
+            right_freq = right_curve[i][0]
+            left_amp = right_curve[i-1][1]
+            left_freq = right_curve[i-1][0]
+            break
+    # interpolation
+    slope = (right_amp - left_amp) / (right_freq - left_freq)
+    right_freq_intersection = left_freq + (amp_thresold - left_amp) / slope
+    forced_damping_ratio = (right_freq_intersection - left_freq_intersection) / 2
+    print(f'Damping ratio of D under forced: {forced_damping_ratio}')
+
+    plt.plot(max_record[:,0], max_record[:,1], marker='x', markersize=5, linestyle='-', color='black', linewidth=0.7)
+    # plot vertical lines on intersection points
+    plt.axvline(x=left_freq_intersection, color='red', linestyle='--', linewidth=0.7)
+    plt.axvline(x=right_freq_intersection, color='blue', linestyle='--', linewidth=0.7)
+    plt.ticklabel_format(style='sci', axis='x')
+    plt.ticklabel_format(style='sci', axis='y')
+    plt.xlabel(r'Normalized Frequency $\omega/\omega_n$')
+    plt.ylabel('Amplitude')
+    plt.grid()
+    plt.savefig('max_amplitude_plot_intersect.png', dpi=300, bbox_inches='tight', pad_inches=0)
+    plt.clf()
