@@ -140,9 +140,6 @@ if __name__ == '__main__':
 
     print('\n')
 
-    d_damping_ratio = 0.00989767
-    d_natural_freq = d_actual_freq / np.sqrt(1 - d_damping_ratio**2)
-
     # forced vibration: Block D
     print('Block D forced vibration analysis')
     max_record = []
@@ -178,7 +175,7 @@ if __name__ == '__main__':
     max_amp = max_record[max_idx, 1]
     print(f'Maximum amplitude: {max_amp} at {max_freq} Hz')
     # normalization with natrual frequency
-    max_record[:, 0] = max_record[:, 0] / d_natural_freq
+    max_record[:, 0] = max_record[:, 0] / max_freq # frequency corresponding to the maximum amplitude is natrual frequency
     max_freq, max_amp = plot_max_amplitude(max_record)
     amp_thresold = 0.707 * max_amp
     # find intersection point
@@ -215,10 +212,11 @@ if __name__ == '__main__':
 
     plt.plot(max_record[:,0], max_record[:,1], marker='x', markersize=5, linestyle='-', color='black', linewidth=0.7)
     # plot vertical lines on intersection points
-    plt.axvline(x=left_freq_intersection, color='red', linestyle='--', linewidth=0.7)
-    plt.axvline(x=right_freq_intersection, color='blue', linestyle='--', linewidth=0.7)
+    plt.axvline(x=left_freq_intersection, color='red', linestyle='--', linewidth=0.7, label=r'$\omega_1/\omega_n$')
+    plt.axvline(x=right_freq_intersection, color='blue', linestyle='--', linewidth=0.7, label=r'$\omega_2/\omega_n$')
     plt.ticklabel_format(style='sci', axis='x')
     plt.ticklabel_format(style='sci', axis='y')
+    plt.legend()
     plt.xlabel(r'Normalized Frequency $\omega/\omega_n$')
     plt.ylabel('Amplitude')
     plt.grid()
